@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Batch Email Sender</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Courier New', monospace;
+    background: #0e0e0e;
+    color: #d4d4d4;
+    min-height: 100vh;
+    padding: 2rem;
+  }
+
+  .container { max-width: 760px; margin: 0 auto; }
+
+  .header {
+    border-bottom: 1px solid #2a2a2a;
+    padding-bottom: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .header h1 {
+    font-size: 13px;
+    font-weight: normal;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 6px;
+  }
+
+  .sender-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #4ade80;
+  }
+
+  .dot.red { background: #f87171; }
+
+  .section { margin-bottom: 1.5rem; }
+
+  label {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 8px;
+  }
+
+  input[type="text"], input[type="password"], input[type="email"], textarea, select {
+    width: 100%;
+    background: #141414;
+    border: 1px solid #2a2a2a;
+    border-radius: 4px;
+    color: #d4d4d4;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+
+  input:focus, textarea:focus { border-color: #444; }
+
+  textarea { resize: vertical; min-height: 180px; line-height: 1.6; }
+
+  .file-drop {
+    border: 1px dashed #2a2a2a;
+    border-radius: 4px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    position: relative;
+  }
+
+  .file-drop:hover { border-color: #444; background: #141414; }
+
+  .file-drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+
+  .file-drop .drop-label { font-size: 13px; color: #666; }
+  .file-drop .drop-hint { font-size: 11px; color: #444; margin-top: 4px; }
+  .file-drop.has-file .drop-label { color: #4ade80; }
+
+  .attachments-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .attachment-tag {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 3px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: #888;
+  }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+  .btn {
+    background: #d4d4d4;
+    color: #0e0e0e;
+    border: none;
+    border-radius: 4px;
+    padding: 11px 24px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+    width: 100%;
+  }
+
+  .btn:hover { background: #fff; }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .btn.secondary {
+    background: transparent;
+    color: #666;
+    border: 1px solid #2a2a2a;
+  }
+  .btn.secondary:hover { border-color: #444; color: #d4d4d4; background: transparent; }
+
+  .log {
+    background: #090909;
+    border: 1px solid #1e1e1e;
+    border-radius: 4px;
+    padding: 12px;
+    font-size: 12px;
+    line-height: 1.8;
+    max-height: 240px;
+    overflow-y: auto;
+    display: none;
+  }
+
+  .log.visible { display: block; }
+  .log .ok { color: #4ade80; }
+  .log .err { color: #f87171; }
+  .log .info { color: #888; }
+
+  .setup-panel {
+    background: #141414;
+    border: 1px solid #2a2a2a;
+    border-radius: 4px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .setup-panel h2 {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 1rem;
+  }
+
+  .divider {
+    border: none;
+    border-top: 1px solid #1e1e1e;
+    margin: 1.5rem 0;
+  }
+
+  .hint { font-size: 11px; color: #444; margin-top: 5px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Batch Email Sender</h1>
+    <div class="sender-badge" id="userBadge" style="display:none;">
+        <span class="dot"></span>
+        <span id="userEmail"></span>
+    </div>
+  </div>
+
+  <div class="setup-panel" id="setupPanel" style="display:none;">
+    <h2>First-time setup — store Gmail credentials</h2>
+    <div class="section">
+      <label>Gmail address</label>
+      <input type="email" id="setupEmail" placeholder="you@gmail.com" />
+    </div>
+    <div class="section">
+      <label>App password</label>
+      <input type="password" id="setupPass" placeholder="xxxx xxxx xxxx xxxx" />
+      <p class="hint">Generate at: Google Account → Security → 2-Step Verification → App Passwords</p>
+    </div>
+    <button class="btn" onclick="saveCredentials()">Save credentials</button>
+  </div>
+
+  <div id="mainPanel" style="display:none;">
+
+    <div class="section">
+      <label>Subject line</label>
+      <input type="text" id="subject" placeholder="Vulnerability Analyst – J0326-2161 | Shi" />
+    </div>
+
+    <div class="section">
+      <label>Email template</label>
+      <textarea id="template" placeholder="Hi {name},&#10;&#10;Your email body here...&#10;&#10;Use {name} where you want the recipient's first name inserted."></textarea>
+      <p class="hint">Use {name} for personalization — replaced with each recipient's first name from the CSV.</p>
+    </div>
+
+    <div class="row">
+      <div class="section">
+        <label>Contacts CSV</label>
+        <div class="file-drop" id="csvDrop">
+          <input type="file" accept=".csv" onchange="handleCSV(this)" />
+          <div class="drop-label" id="csvLabel">Click to upload CSV</div>
+          <div class="drop-hint">Col 1: First Name &nbsp;|&nbsp; Col 2: Email address</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <label>Attachments in /attachments folder</label>
+        <div class="attachments-list" id="attachmentsList">
+          <span style="font-size:12px; color:#444;">Loading...</span>
+        </div>
+        <p class="hint" style="margin-top:8px;">Drop files into the attachments/ folder — they auto-attach to every email.</p>
+        <button class="btn secondary" style="margin-top:10px; width:auto; padding: 7px 14px;" onclick="loadAttachments()">Refresh</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <label>Delay between sends (seconds)</label>
+      <input type="text" id="delay" value="10" style="width:80px;" />
+    </div>
+
+    <hr class="divider">
+
+    <button class="btn" id="sendBtn" onclick="sendEmails()">Send emails</button>
+
+    <div class="log" id="log"></div>
+
+  </div>
+</div>
+
+<script>
+  let csvFile = null;
+
+async function init() {
+  try {
+    const res = await fetch('http://127.0.0.1:6001/api/status');
+    const data = await res.json();
+
+    if (!data.configured) {
+      console.warn("Setup required:", data.error || "No credentials found");
+
+      document.getElementById('setupPanel').style.display = 'block';
+      document.getElementById('mainPanel').style.display = 'none';
+    } else {
+      document.getElementById('setupPanel').style.display = 'none';
+      document.getElementById('mainPanel').style.display = 'block';
+
+      document.getElementById('userBadge').style.display = 'inline-flex';
+      document.getElementById('userEmail').textContent = data.user;
+
+      loadAttachments();
+    }
+
+  } catch (e) {
+    alert("Backend not reachable.");
+  }
+}
+  async function saveCredentials() {
+    const email = document.getElementById('setupEmail').value.trim();
+    const password = document.getElementById('setupPass').value.trim();
+
+    if (!email || !password) {
+      alert('Enter both fields.');
+      return;
+    }
+
+    const res = await fetch('http://127.0.0.1:6001/api/setup', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email, password})
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      alert("Credentials saved ✅");
+      init(); // reload UI state
+    } else {
+      alert('Error: ' + data.error);
+    }
+  }
+
+  async function loadAttachments() {
+    const el = document.getElementById('attachmentsList');
+    try {
+      const res = await fetch('http://127.0.0.1:6001/api/attachments');
+      const data = await res.json();
+      if (data.files.length === 0) {
+        el.innerHTML = '<span style="font-size:12px; color:#444;">No files in attachments/</span>';
+      } else {
+        el.innerHTML = data.files.map(f => `<span class="attachment-tag">${f}</span>`).join('');
+      }
+    } catch(e) {
+      el.innerHTML = '<span style="font-size:12px; color:#f87171;">Could not load — is Flask running?</span>';
+    }
+  }
+
+  function handleCSV(input) {
+    csvFile = input.files[0];
+    const label = document.getElementById('csvLabel');
+    const drop = document.getElementById('csvDrop');
+    if (csvFile) {
+      label.textContent = csvFile.name;
+      drop.classList.add('has-file');
+    }
+  }
+
+  function log(msg, type='info') {
+    const el = document.getElementById('log');
+    el.classList.add('visible');
+    el.innerHTML += `<div class="${type}">${msg}</div>`;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  async function sendEmails() {
+    const template = document.getElementById('template').value.trim();
+    const subject = document.getElementById('subject').value.trim();
+    const delay = document.getElementById('delay').value.trim() || '10';
+
+    if (!template) return alert('Enter an email template.');
+    if (!subject) return alert('Enter a subject line.');
+    if (!csvFile) return alert('Upload a contacts CSV.');
+
+    const btn = document.getElementById('sendBtn');
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+    document.getElementById('log').innerHTML = '';
+
+    log('Connecting to Gmail...', 'info');
+
+    const form = new FormData();
+    form.append('template', template);
+    form.append('subject', subject);
+    form.append('csv', csvFile);
+    form.append('delay', delay);
+
+    try {
+      const res = await fetch('http://127.0.0.1:6001/api/send', { method: 'POST', body: form });
+      const data = await res.json();
+
+      if (!data.success) {
+        log('Error: ' + data.error, 'err');
+      } else {
+        data.results.forEach(r => {
+          if (r.status === 'sent') {
+            log(`✓ ${r.name} <${r.email}>`, 'ok');
+          } else {
+            log(`✗ ${r.name} <${r.email}> — ${r.status}`, 'err');
+          }
+        });
+        const sent = data.results.filter(r => r.status === 'sent').length;
+        log(`─── Done: ${sent}/${data.results.length} sent`, 'info');
+      }
+    } catch (e) {
+      log('Request failed: ' + e.message, 'err');
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Send emails';
+  }
+
+  init();
+</script>
+</body>
+</html>
