@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<link rel="shortcut icon" href="favicon.ico">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Batch Email Sender</title>
@@ -215,16 +216,16 @@
 
     <div class="section">
       <label>Email template</label>
-      <textarea id="template" placeholder="Hi {name},&#10;&#10;Your email body here...&#10;&#10;Use {name} where you want the recipient's first name inserted."></textarea>
-      <p class="hint">Use {name} for personalization — replaced with each recipient's first name from the CSV.</p>
+      <textarea id="template" placeholder="Hi {referenceName},&#10;&#10;Your email body here...&#10;&#10;Use {referenceName} where you want the recipient's first name inserted."></textarea>
+      <p class="hint">Use {referenceName} for personalization — replaced with each recipient's first name from the CSV.</p>
     </div>
 
     <div class="row">
       <div class="section">
         <label>Contacts CSV</label>
         <div class="file-drop" id="csvDrop">
-          <input type="file" accept=".csv" onchange="handleCSV(this)" />
-          <div class="drop-label" id="csvLabel">Click to upload CSV</div>
+          <input type="file" accept=".csv,.xlsx" onchange="handleCSV(this)" />
+          <div class="drop-label" id="csvLabel">Click to upload CSV or xlsx</div>
           <div class="drop-hint">Col 1: First Name &nbsp;|&nbsp; Col 2: Email address</div>
         </div>
       </div>

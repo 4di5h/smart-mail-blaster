@@ -8,10 +8,14 @@ import os
 import io
 import json
 import tempfile
+import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
+from openpyxl import load_workbook
+
+EMAIL_REGEX = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 
 app = Flask(__name__, static_folder=".")
 CORS(app)
@@ -143,9 +147,19 @@ def send_emails():
     gmail_user = creds["user"]
     gmail_pass = creds["pass"]
 
-    csv_content = csv_file.read().decode("utf-8")
-    reader = csv.reader(io.StringIO(csv_content))
-    next(reader)  # skip header row
+    file = request.files.get("csv")
+
+    if not file:
+        return jsonify({"success": False, "error": "File required"}), 400
+
+    # Load Excel file
+    wb = load_workbook(file, data_only=True)
+    sheet = wb.active
+
+    rows = list(sheet.iter_rows(values_only=True))
+
+    # Skip header
+    rows = rows[1:]
 
     attachment_files = os.listdir(ATTACHMENTS_DIR)
 
@@ -155,12 +169,23 @@ def send_emails():
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
             smtp.login(gmail_user, gmail_pass)
 
-            for row in reader:
-                if len(row) < 2:
+            for row in rows:
+                if not row or len(row) < 2:
                     continue
-                name = row[0].strip()
-                email = row[1].strip()
+
+                name = str(row[0]).strip()
+                email = str(row[1]).strip()
+
                 if not name or not email:
+                    continue
+
+                # Add this validation
+                if not re.match(EMAIL_REGEX, email):
+                    results.append({
+                        "email": email,
+                        "name": name,
+                        "status": "invalid email format"
+                    })
                     continue
 
                 try:
@@ -168,7 +193,7 @@ def send_emails():
                     msg["From"] = gmail_user
                     msg["To"] = email
                     msg["Subject"] = subject
-                    msg.attach(MIMEText(template.replace("{name}", name), "plain"))
+                    msg.attach(MIMEText(template.replace("{referenceName}", name), "plain"))
 
                     for fname in attachment_files:
                         fpath = os.path.join(ATTACHMENTS_DIR, fname)
