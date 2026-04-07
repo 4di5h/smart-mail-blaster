@@ -154,7 +154,7 @@ def send_emails():
     if filename.endswith(".csv"):
         content = file.read().decode("utf-8")
         reader = csv.reader(io.StringIO(content))
-        rows = list(reader)[1:]
+        rows = list(reader)
 
     elif filename.endswith(".xlsx"):
         wb = load_workbook(file, data_only=True)
@@ -173,16 +173,21 @@ def send_emails():
             smtp.login(gmail_user, gmail_pass)
 
             for i, row in enumerate(rows):
-                results.append({
-                    "index": i,
-                    "status": "skipped"
-                })
+                if not row or len(row) < 2:
+                    results.append({
+                        "index": i,
+                        "status": "skipped"
+                    })
                     continue
 
                 name = str(row[0]).strip()
                 email = str(row[1]).strip()
 
                 if not name or not email:
+                    results.append({
+                        "index": i,
+                        "status": "skipped"
+                    })
                     continue
 
                 # Add this validation
