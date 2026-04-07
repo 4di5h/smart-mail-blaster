@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 <link rel="shortcut icon" href="favicon.ico">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -321,15 +322,80 @@ async function init() {
     }
   }
 
-  function handleCSV(input) {
-    csvFile = input.files[0];
-    const label = document.getElementById('csvLabel');
-    const drop = document.getElementById('csvDrop');
-    if (csvFile) {
-      label.textContent = csvFile.name;
-      drop.classList.add('has-file');
-    }
-  }
+ async function handleCSV(input) {
+   const file = input.files[0];
+   if (!file) return;
+
+   const name = file.name.toLowerCase();
+
+   try {
+     let rows = [];
+
+      CSV handling
+     if (name.endsWith(".csv")) {
+       const text = await file.text();
+       rows = text.split("\n").map(r => r.split(","));
+     }
+
+      XLSX handling
+     else if (name.endsWith(".xlsx")) {
+       const data = await file.arrayBuffer();
+
+       const workbook = XLSX.read(data, { type: "array" });
+       const sheet = workbook.Sheets[workbook.SheetNames[0]];
+       rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+     } else {
+       alert("Unsupported file type");
+       return;
+     }
+
+      Skip header
+     rows = rows.slice(1);
+
+     const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+     let errors = [];
+
+     rows.forEach((row, i) => {
+       const rowNum = i + 2;
+
+       if (!row || row.length < 2) {
+         errors.push(`Row ${rowNum}: missing columns`);
+         return;
+       }
+
+       const email = (row[1] || "").toString().trim();
+
+       if (!email) {
+         errors.push(`Row ${rowNum}: missing email`);
+       } else if (!EMAIL_REGEX.test(email)) {
+         errors.push(`Row ${rowNum}: invalid email (${email})`);
+       }
+     });
+
+      Reject file if errors
+     if (errors.length > 0) {
+       alert("File validation failed:\n\n" + errors.slice(0, 5).join("\n"));
+       input.value = "";
+       csvFile = null;
+       return;
+     }
+
+      Accept file
+     csvFile = file;
+
+     const label = document.getElementById('csvLabel');
+     const drop = document.getElementById('csvDrop');
+
+     label.textContent = file.name;
+     drop.classList.add('has-file');
+
+   } catch (err) {
+     alert("Error reading file");
+     input.value = "";
+     csvFile = null;
+   }
+ }
 
   function log(msg, type='info') {
     const el = document.getElementById('log');
