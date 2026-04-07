@@ -215,7 +215,9 @@ def send_emails():
 
                     smtp.sendmail(gmail_user, email, msg.as_string())
                     results.append({"index": i, "email": email, "name": name, "status": "sent"})
-                    time.sleep(delay)
+                    variation = delay * 0.09  # 9% Randomness
+                    random_delay = random.uniform(delay - variation, delay + variation)
+                    time.sleep(random_delay)
 
                 except Exception as e:
                     results.append({"index": i, "email": email, "name": name, "status": f"failed: {str(e)}"})
