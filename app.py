@@ -129,7 +129,7 @@ def send_emails():
     template = request.form.get("template", "").strip()
     subject = request.form.get("subject", "").strip()
     csv_file = request.files.get("csv")
-    delay = int(request.form.get("delay", 10))
+    delay = float(request.form.get("delay", 10))
 
     if not template or not subject or not csv_file:
         return jsonify({
