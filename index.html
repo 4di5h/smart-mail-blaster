@@ -471,11 +471,17 @@ async function sendEmails() {
     if (!data.success) {
       log('Error: ' + data.error, 'err');
     } else {
-      data.results.forEach((r, i) => {
-        const statusEl = document.getElementById(`status-${i}`);
+      data.results.forEach((r) => {
+        const statusEl = document.getElementById(`status-${r.index}`);
 
         if (statusEl) {
-          statusEl.textContent = r.status === 'sent' ? "✅ Sent" : "❌ Failed";
+          if (r.status === "sent") {
+            statusEl.textContent = "✅ Sent";
+          } else if (r.status === "skipped") {
+            statusEl.textContent = "⚠️ Skipped";
+          } else {
+            statusEl.textContent = "❌ Failed";
+          }
         }
 
         if (r.status === 'sent') {

@@ -172,8 +172,11 @@ def send_emails():
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
             smtp.login(gmail_user, gmail_pass)
 
-            for row in rows:
-                if not row or len(row) < 2:
+            for i, row in enumerate(rows):
+                results.append({
+                    "index": i,
+                    "status": "skipped"
+                })
                     continue
 
                 name = str(row[0]).strip()
@@ -206,11 +209,11 @@ def send_emails():
                             msg.attach(part)
 
                     smtp.sendmail(gmail_user, email, msg.as_string())
-                    results.append({"email": email, "name": name, "status": "sent"})
+                    results.append({"index": i, "email": email, "name": name, "status": "sent"})
                     time.sleep(delay)
 
                 except Exception as e:
-                    results.append({"email": email, "name": name, "status": f"failed: {str(e)}"})
+                    results.append({"index": i, "email": email, "name": name, "status": f"failed: {str(e)}"})
 
     except Exception as e:
         return jsonify({"success": False, "error": f"Auth failed: {str(e)}"}), 500
