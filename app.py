@@ -149,17 +149,20 @@ def send_emails():
 
     file = request.files.get("csv")
 
-    if not file:
-        return jsonify({"success": False, "error": "File required"}), 400
+    filename = file.filename.lower()
 
-    # Load Excel file
-    wb = load_workbook(file, data_only=True)
-    sheet = wb.active
+    if filename.endswith(".csv"):
+        content = file.read().decode("utf-8")
+        reader = csv.reader(io.StringIO(content))
+        rows = list(reader)[1:]
 
-    rows = list(sheet.iter_rows(values_only=True))
+    elif filename.endswith(".xlsx"):
+        wb = load_workbook(file, data_only=True)
+        sheet = wb.active
+        rows = list(sheet.iter_rows(values_only=True))
 
-    # Skip header
-    rows = rows[1:]
+    else:
+        return jsonify({"success": False, "error": "Unsupported file format"}), 400
 
     attachment_files = os.listdir(ATTACHMENTS_DIR)
 
@@ -181,12 +184,10 @@ def send_emails():
 
                 # Add this validation
                 if not re.match(EMAIL_REGEX, email):
-                    results.append({
-                        "email": email,
-                        "name": name,
-                        "status": "invalid email format"
-                    })
-                    continue
+                    return jsonify({
+                        "success": False,
+                        "error": f"Invalid email detected: {email}"
+                    }), 400
 
                 try:
                     msg = MIMEMultipart()

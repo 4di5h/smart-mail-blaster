@@ -221,6 +221,8 @@
       <p class="hint">Use {referenceName} for personalization — replaced with each recipient's first name from the CSV.</p>
     </div>
 
+    <div id="fileStats" style="font-size:12px; color:#888; margin-top:6px;"></div>
+
     <div class="row">
       <div class="section">
         <label>Contacts CSV</label>
@@ -249,6 +251,7 @@
     <hr class="divider">
 
     <button class="btn" id="sendBtn" onclick="sendEmails()">Send emails</button>
+    <div id="previewTable" style="margin-top:20px;"></div>
 
     <div class="log" id="log"></div>
 
@@ -257,6 +260,7 @@
 
 <script>
   let csvFile = null;
+  let parsedRows = [];
 
 async function init() {
   try {
@@ -282,176 +286,218 @@ async function init() {
     alert("Backend not reachable.");
   }
 }
-  async function saveCredentials() {
-    const email = document.getElementById('setupEmail').value.trim();
-    const password = document.getElementById('setupPass').value.trim();
 
-    if (!email || !password) {
-      alert('Enter both fields.');
+async function saveCredentials() {
+  const email = document.getElementById('setupEmail').value.trim();
+  const password = document.getElementById('setupPass').value.trim();
+
+  if (!email || !password) {
+    alert('Enter both fields.');
+    return;
+  }
+
+  const res = await fetch('http://127.0.0.1:6001/api/setup', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({email, password})
+  });
+
+  const data = await res.json();
+
+  if (data.success) {
+    alert("Credentials saved ✅");
+    init();
+  } else {
+    alert('Error: ' + data.error);
+  }
+}
+
+async function loadAttachments() {
+  const el = document.getElementById('attachmentsList');
+  try {
+    const res = await fetch('http://127.0.0.1:6001/api/attachments');
+    const data = await res.json();
+    if (data.files.length === 0) {
+      el.innerHTML = '<span style="font-size:12px; color:#444;">No files in attachments/</span>';
+    } else {
+      el.innerHTML = data.files.map(f => `<span class="attachment-tag">${f}</span>`).join('');
+    }
+  } catch(e) {
+    el.innerHTML = '<span style="font-size:12px; color:#f87171;">Could not load — is Flask running?</span>';
+  }
+}
+
+async function handleCSV(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const name = file.name.toLowerCase();
+
+  try {
+    let rows = [];
+
+    if (name.endsWith(".csv")) {
+      const text = await file.text();
+      rows = text.split("\n").map(r => r.split(","));
+    }
+    else if (name.endsWith(".xlsx")) {
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+    } else {
+      alert("Unsupported file type");
       return;
     }
 
-    const res = await fetch('http://127.0.0.1:6001/api/setup', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({email, password})
+    rows = rows.filter(row =>
+      row &&
+      row.length >= 2 &&
+      row.some(cell => cell && cell.toString().trim() !== "")
+    );
+
+    const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+    let errors = [];
+
+    rows.forEach((row, i) => {
+      const rowNum = i + 1;
+
+      if (!row || row.length < 2) {
+        errors.push(`Row ${rowNum}: missing columns`);
+        return;
+      }
+
+      const email = (row[1] || "").toString().trim();
+
+      if (!email) {
+        errors.push(`Row ${rowNum}: missing email`);
+      } else if (!EMAIL_REGEX.test(email)) {
+        errors.push(`Row ${rowNum}: invalid email (${email})`);
+      }
     });
 
+    if (errors.length > 0) {
+      alert("File validation failed:\n\n" + errors.slice(0, 5).join("\n"));
+      input.value = "";
+      csvFile = null;
+      return;
+    }
+
+    csvFile = file;
+    parsedRows = rows;
+
+    document.getElementById('fileStats').textContent =
+      `Loaded ${rows.length} contacts`;
+
+    renderTable();
+
+    const label = document.getElementById('csvLabel');
+    const drop = document.getElementById('csvDrop');
+
+    label.textContent = file.name;
+    drop.classList.add('has-file');
+
+  } catch (err) {
+    alert("Error reading file");
+    input.value = "";
+    csvFile = null;
+  }
+}
+
+function renderTable() {
+  const container = document.getElementById("previewTable");
+
+  if (!parsedRows.length) {
+    container.innerHTML = "";
+    return;
+  }
+
+  let html = `
+    <table style="width:100%; border-collapse:collapse; font-size:12px;">
+      <tr style="color:#666;">
+        <th style="text-align:left; padding:6px;">Name</th>
+        <th style="text-align:left; padding:6px;">Email</th>
+        <th style="text-align:left; padding:6px;">Status</th>
+      </tr>
+  `;
+
+  parsedRows.forEach((row, i) => {
+    html += `
+      <tr id="row-${i}">
+        <td style="padding:6px;">${row[0]}</td>
+        <td style="padding:6px;">${row[1]}</td>
+        <td style="padding:6px;" id="status-${i}">⏳ Pending</td>
+      </tr>
+    `;
+  });
+
+  html += `</table>`;
+  container.innerHTML = html;
+}
+
+function log(msg, type='info') {
+  const el = document.getElementById('log');
+  el.classList.add('visible');
+  el.innerHTML += `<div class="${type}">${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+async function sendEmails() {
+  const template = document.getElementById('template').value.trim();
+  const subject = document.getElementById('subject').value.trim();
+  const delay = document.getElementById('delay').value.trim() || '10';
+
+  if (!template) return alert('Enter an email template.');
+  if (!subject) return alert('Enter a subject line.');
+  if (!csvFile) return alert('Upload a contacts CSV.');
+
+  const btn = document.getElementById('sendBtn');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+  document.getElementById('log').innerHTML = '';
+
+  log('Connecting to Gmail...', 'info');
+
+  const form = new FormData();
+  form.append('template', template);
+  form.append('subject', subject);
+  form.append('csv', csvFile);
+  form.append('delay', delay);
+
+  try {
+    const res = await fetch('http://127.0.0.1:6001/api/send', { method: 'POST', body: form });
     const data = await res.json();
 
-    if (data.success) {
-      alert("Credentials saved ✅");
-      init(); // reload UI state
+    if (!data.success) {
+      log('Error: ' + data.error, 'err');
     } else {
-      alert('Error: ' + data.error);
+      data.results.forEach((r, i) => {
+        const statusEl = document.getElementById(`status-${i}`);
+
+        if (statusEl) {
+          statusEl.textContent = r.status === 'sent' ? "✅ Sent" : "❌ Failed";
+        }
+
+        if (r.status === 'sent') {
+          log(`✓ ${r.name} <${r.email}>`, 'ok');
+        } else {
+          log(`✗ ${r.name} <${r.email}> — ${r.status}`, 'err');
+        }
+      });
+
+      const sent = data.results.filter(r => r.status === 'sent').length;
+      log(`─── Done: ${sent}/${data.results.length} sent`, 'info');
     }
+  } catch (e) {
+    log('Request failed: ' + e.message, 'err');
   }
 
-  async function loadAttachments() {
-    const el = document.getElementById('attachmentsList');
-    try {
-      const res = await fetch('http://127.0.0.1:6001/api/attachments');
-      const data = await res.json();
-      if (data.files.length === 0) {
-        el.innerHTML = '<span style="font-size:12px; color:#444;">No files in attachments/</span>';
-      } else {
-        el.innerHTML = data.files.map(f => `<span class="attachment-tag">${f}</span>`).join('');
-      }
-    } catch(e) {
-      el.innerHTML = '<span style="font-size:12px; color:#f87171;">Could not load — is Flask running?</span>';
-    }
-  }
+  btn.disabled = false;
+  btn.textContent = 'Send emails';
+}
 
- async function handleCSV(input) {
-   const file = input.files[0];
-   if (!file) return;
-
-   const name = file.name.toLowerCase();
-
-   try {
-     let rows = [];
-
-      CSV handling
-     if (name.endsWith(".csv")) {
-       const text = await file.text();
-       rows = text.split("\n").map(r => r.split(","));
-     }
-
-      XLSX handling
-     else if (name.endsWith(".xlsx")) {
-       const data = await file.arrayBuffer();
-
-       const workbook = XLSX.read(data, { type: "array" });
-       const sheet = workbook.Sheets[workbook.SheetNames[0]];
-       rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-     } else {
-       alert("Unsupported file type");
-       return;
-     }
-
-      Skip header
-     rows = rows.slice(1);
-
-     const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-
-     let errors = [];
-
-     rows.forEach((row, i) => {
-       const rowNum = i + 2;
-
-       if (!row || row.length < 2) {
-         errors.push(`Row ${rowNum}: missing columns`);
-         return;
-       }
-
-       const email = (row[1] || "").toString().trim();
-
-       if (!email) {
-         errors.push(`Row ${rowNum}: missing email`);
-       } else if (!EMAIL_REGEX.test(email)) {
-         errors.push(`Row ${rowNum}: invalid email (${email})`);
-       }
-     });
-
-      Reject file if errors
-     if (errors.length > 0) {
-       alert("File validation failed:\n\n" + errors.slice(0, 5).join("\n"));
-       input.value = "";
-       csvFile = null;
-       return;
-     }
-
-      Accept file
-     csvFile = file;
-
-     const label = document.getElementById('csvLabel');
-     const drop = document.getElementById('csvDrop');
-
-     label.textContent = file.name;
-     drop.classList.add('has-file');
-
-   } catch (err) {
-     alert("Error reading file");
-     input.value = "";
-     csvFile = null;
-   }
- }
-
-  function log(msg, type='info') {
-    const el = document.getElementById('log');
-    el.classList.add('visible');
-    el.innerHTML += `<div class="${type}">${msg}</div>`;
-    el.scrollTop = el.scrollHeight;
-  }
-
-  async function sendEmails() {
-    const template = document.getElementById('template').value.trim();
-    const subject = document.getElementById('subject').value.trim();
-    const delay = document.getElementById('delay').value.trim() || '10';
-
-    if (!template) return alert('Enter an email template.');
-    if (!subject) return alert('Enter a subject line.');
-    if (!csvFile) return alert('Upload a contacts CSV.');
-
-    const btn = document.getElementById('sendBtn');
-    btn.disabled = true;
-    btn.textContent = 'Sending...';
-    document.getElementById('log').innerHTML = '';
-
-    log('Connecting to Gmail...', 'info');
-
-    const form = new FormData();
-    form.append('template', template);
-    form.append('subject', subject);
-    form.append('csv', csvFile);
-    form.append('delay', delay);
-
-    try {
-      const res = await fetch('http://127.0.0.1:6001/api/send', { method: 'POST', body: form });
-      const data = await res.json();
-
-      if (!data.success) {
-        log('Error: ' + data.error, 'err');
-      } else {
-        data.results.forEach(r => {
-          if (r.status === 'sent') {
-            log(`✓ ${r.name} <${r.email}>`, 'ok');
-          } else {
-            log(`✗ ${r.name} <${r.email}> — ${r.status}`, 'err');
-          }
-        });
-        const sent = data.results.filter(r => r.status === 'sent').length;
-        log(`─── Done: ${sent}/${data.results.length} sent`, 'info');
-      }
-    } catch (e) {
-      log('Request failed: ' + e.message, 'err');
-    }
-
-    btn.disabled = false;
-    btn.textContent = 'Send emails';
-  }
-
-  init();
+init();
 </script>
+
 </body>
 </html>
