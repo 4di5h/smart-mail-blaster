@@ -231,6 +231,7 @@
           <div class="drop-label" id="csvLabel">Click to upload CSV or xlsx</div>
           <div class="drop-hint">Col 1: First Name &nbsp;|&nbsp; Col 2: Email address</div>
         </div>
+        <button class="btn secondary" style="margin-top:10px; width:auto; padding:7px 14px;" onclick="refreshCSV()">Refresh</button>
       </div>
 
       <div class="section">
@@ -262,6 +263,17 @@
   let csvFile = null;
   let parsedRows = [];
 
+function refreshCSV() {
+  const input = document.querySelector('#csvDrop input');
+
+  if (!input || !input.files || !input.files[0]) {
+    alert("No file uploaded.");
+    return;
+  }
+
+  handleCSV(input);
+}
+
 async function init() {
   try {
     const res = await fetch('http://127.0.0.1:6001/api/status');
@@ -283,7 +295,7 @@ async function init() {
     }
 
   } catch (e) {
-    alert("Backend not reachable.");
+    alert("Connection lost. Please refresh the page.");
   }
 }
 
@@ -315,7 +327,9 @@ async function saveCredentials() {
 async function loadAttachments() {
   const el = document.getElementById('attachmentsList');
   try {
-    const res = await fetch('http://127.0.0.1:6001/api/attachments');
+    const res = await fetch(`http://127.0.0.1:6001/api/attachments?ts=${Date.now()}`, {
+      cache: "no-store"
+    });
     const data = await res.json();
     if (data.files.length === 0) {
       el.innerHTML = '<span style="font-size:12px; color:#444;">No files in attachments/</span>';
@@ -442,6 +456,20 @@ function log(msg, type='info') {
   el.scrollTop = el.scrollHeight;
 }
 
+async function updateProgress() {
+  const res = await fetch('http://127.0.0.1:6001/api/progress');
+  const data = await res.json();
+
+  data.forEach(r => {
+    const el = document.getElementById(`status-${r.index}`);
+    if (!el) return;
+
+    if (r.status === "sent") el.textContent = "✅ Sent";
+    else if (r.status && r.status.startsWith("failed")) el.textContent = "❌ Failed";
+    else el.textContent = "⏳ Pending";
+  });
+}
+
 async function sendEmails() {
   const template = document.getElementById('template').value.trim();
   const subject = document.getElementById('subject').value.trim();
@@ -463,10 +491,12 @@ async function sendEmails() {
   form.append('subject', subject);
   form.append('csv', csvFile);
   form.append('delay', delay);
+  const interval = setInterval(updateProgress, 1000);
 
   try {
     const res = await fetch('http://127.0.0.1:6001/api/send', { method: 'POST', body: form });
     const data = await res.json();
+    clearInterval(interval);
 
     if (!data.success) {
       log('Error: ' + data.error, 'err');
@@ -495,6 +525,7 @@ async function sendEmails() {
       log(`─── Done: ${sent}/${data.results.length} sent`, 'info');
     }
   } catch (e) {
+    clearInterval(interval);
     log('Request failed: ' + e.message, 'err');
   }
 

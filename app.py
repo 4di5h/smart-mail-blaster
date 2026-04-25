@@ -9,6 +9,7 @@ import io
 import json
 import tempfile
 import re
+import random
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -16,6 +17,8 @@ from email import encoders
 from openpyxl import load_workbook
 
 EMAIL_REGEX = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+
+progress = []
 
 app = Flask(__name__, static_folder=".")
 CORS(app)
@@ -124,6 +127,7 @@ def list_attachments():
 
 
 @app.route("/api/send", methods=["POST"])
+
 def send_emails():
 
     template = request.form.get("template", "").strip()
@@ -164,6 +168,9 @@ def send_emails():
     else:
         return jsonify({"success": False, "error": "Unsupported file format"}), 400
 
+    global progress
+    progress = [{"status": "pending"} for _ in rows]
+
     attachment_files = os.listdir(ATTACHMENTS_DIR)
 
     results = []
@@ -174,28 +181,26 @@ def send_emails():
 
             for i, row in enumerate(rows):
                 if not row or len(row) < 2:
-                    results.append({
-                        "index": i,
-                        "status": "skipped"
-                    })
+                    entry = {"index": i, "status": "skipped"}
+                    progress[i] = entry
+                    results.append(entry)
                     continue
 
                 name = str(row[0]).strip()
                 email = str(row[1]).strip()
 
                 if not name or not email:
-                    results.append({
-                        "index": i,
-                        "status": "skipped"
-                    })
+                    entry = {"index": i, "status": "skipped"}
+                    progress[i] = entry
+                    results.append(entry)
                     continue
 
                 # Add this validation
                 if not re.match(EMAIL_REGEX, email):
-                    return jsonify({
-                        "success": False,
-                        "error": f"Invalid email detected: {email}"
-                    }), 400
+                    entry = {"index": i, "email": email, "name": name, "status": "failed: invalid email"}
+                    progress[i] = entry
+                    results.append(entry)
+                    continue
 
                 try:
                     msg = MIMEMultipart()
@@ -214,19 +219,26 @@ def send_emails():
                             msg.attach(part)
 
                     smtp.sendmail(gmail_user, email, msg.as_string())
-                    results.append({"index": i, "email": email, "name": name, "status": "sent"})
+                    entry = {"index": i, "email": email, "name": name, "status": "sent"}
+                    progress[i] = entry
+                    results.append(entry)
                     variation = delay * 0.09  # 9% Randomness
                     random_delay = random.uniform(delay - variation, delay + variation)
                     time.sleep(random_delay)
 
                 except Exception as e:
-                    results.append({"index": i, "email": email, "name": name, "status": f"failed: {str(e)}"})
+                    entry = {"index": i, "email": email, "name": name, "status": f"failed: {str(e)}"}
+                    progress[i] = entry
+                    results.append(entry)
 
     except Exception as e:
         return jsonify({"success": False, "error": f"Auth failed: {str(e)}"}), 500
 
     return jsonify({"success": True, "results": results})
 
+@app.route("/api/progress", methods=["GET"])
+def get_progress():
+    return jsonify(progress)
 
 if __name__ == "__main__":
     app.run(debug=True, port=6001)
